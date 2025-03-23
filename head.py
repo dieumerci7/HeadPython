@@ -1,3 +1,4 @@
+import argparse
 import cv2
 import numpy as np
 
@@ -32,7 +33,7 @@ def compute_normal(v0, v1, v2):
     return normal / np.linalg.norm(normal)
 
 
-def rotate_x(theta):
+def rotate_y(theta):
     cos_t, sin_t = np.cos(theta), np.sin(theta)
     return np.array([
         [1, 0, 0],
@@ -41,7 +42,7 @@ def rotate_x(theta):
     ])
 
 
-def rotate_y(theta):
+def rotate_z(theta):
     """Rotation matrix for Y-axis."""
     cos_t, sin_t = np.cos(theta), np.sin(theta)
     return np.array([
@@ -51,7 +52,7 @@ def rotate_y(theta):
     ])
 
 
-def rotate_z(theta):
+def rotate_x(theta):
     cos_t, sin_t = np.cos(theta), np.sin(theta)
     return np.array([
         [cos_t, -sin_t, 0],
@@ -112,16 +113,22 @@ def render_model(model, angles, width=800, height=800):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Render a rotating 3D head.")
+    parser.add_argument("--roll", type=float, default=0, help="Angle of rotation around X-axis in degrees, per frame.")
+    parser.add_argument("--pitch", type=float, default=0, help="Angle of rotation around Y-axis in degrees, per frame.")
+    parser.add_argument("--yaw", type=float, default=0, help="Angle of rotation around Z-axis in degrees, per frame.")
+    args = parser.parse_args()
+
     model = Model("african_head.obj")
     theta_x = theta_y = theta_z = 0  # Initial rotation angles
 
     while True:
         image = render_model(model, (theta_x, theta_y, theta_z))
         cv2.imshow("Rotating Head", image)
-        # Rotate 2˚ per frame
-        theta_x += np.radians(2)
-        theta_y += np.radians(2)
-        theta_z += np.radians(2)
+
+        theta_x += np.radians(args.roll)
+        theta_y += np.radians(args.pitch)
+        theta_z += np.radians(args.yaw)
 
         if cv2.waitKey(1) & 0xFF == 27:  # Press 'ESC' to exit
             break

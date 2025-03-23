@@ -1,67 +1,12 @@
 import argparse
-import cv2
+from typing import Tuple
 import numpy as np
-
-class Model:
-    def __init__(self, filename):
-        self.verts = []
-        self.faces = []
-        
-        with open(filename, "r") as f:
-            for line in f:
-                if line.startswith("v "):  # Vertex positions
-                    parts = line.strip().split()
-                    self.verts.append(np.array([float(parts[1]), float(parts[2]), float(parts[3])], dtype=np.float32))
-                elif line.startswith("f "):  # Faces
-                    parts = line.strip().split()
-                    face = [int(p.split('/')[0]) - 1 for p in parts[1:]]
-                    self.faces.append(face)
-
-    def vert(self, i):
-        return self.verts[i]
-
-    def face(self, i):
-        return self.faces[i]
-
-    def nfaces(self):
-        return len(self.faces)
+import cv2
+from model import Model
+from utils import compute_normal, rotate_x, rotate_y, rotate_z
 
 
-def compute_normal(v0, v1, v2):
-    """Compute the face normal using the cross product."""
-    normal = np.cross(v1 - v0, v2 - v0)
-    return normal / np.linalg.norm(normal)
-
-
-def rotate_y(theta):
-    cos_t, sin_t = np.cos(theta), np.sin(theta)
-    return np.array([
-        [1, 0, 0],
-        [0, cos_t, -sin_t],
-        [0, sin_t, cos_t]
-    ])
-
-
-def rotate_z(theta):
-    """Rotation matrix for Y-axis."""
-    cos_t, sin_t = np.cos(theta), np.sin(theta)
-    return np.array([
-        [cos_t, 0, sin_t],
-        [0, 1, 0],
-        [-sin_t, 0, cos_t]
-    ])
-
-
-def rotate_x(theta):
-    cos_t, sin_t = np.cos(theta), np.sin(theta)
-    return np.array([
-        [cos_t, -sin_t, 0],
-        [sin_t, cos_t, 0],
-        [0, 0, 1]
-    ])
-
-
-def render_model(model, angles, width=800, height=800):
+def render_model(model: Model, angles: Tuple[float, float, float], width: int=800, height: int=800) -> np.ndarray:
     theta_x, theta_y, theta_z = angles
     image = np.zeros((height, width, 3), dtype=np.uint8)
     z_buffer = np.full((height, width), -np.inf)
@@ -119,7 +64,7 @@ if __name__ == "__main__":
     parser.add_argument("--yaw", type=float, default=0, help="Angle of rotation around Z-axis in degrees, per frame.")
     args = parser.parse_args()
 
-    model = Model("african_head.obj")
+    model = Model("data/african_head.obj")
     theta_x = theta_y = theta_z = 0  # Initial rotation angles
 
     while True:

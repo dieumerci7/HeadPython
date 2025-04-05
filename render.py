@@ -20,21 +20,23 @@ def render_model(model: Model, texture: np.ndarray, angles: Tuple[float, float, 
 
     for i in range(model.nfaces()):
         face = model.face(i)
-        v0, v1, v2 = model.vert(face[0]), model.vert(face[1]), model.vert(face[2])
-        # Get texture coordinates
         tex_face = model.tex_face(i)
+
+        # 3D vertices
+        v0, v1, v2 = model.vert(face[0]), model.vert(face[1]), model.vert(face[2])
+        # Texture coordinates
         vt0 = model.texcoord(tex_face[0])
         vt1 = model.texcoord(tex_face[1])
         vt2 = model.texcoord(tex_face[2])
 
-        # Apply rotation
+        # Apply rotation to vertices
         v0, v1, v2 = rotation_matrix @ v0, rotation_matrix @ v1, rotation_matrix @ v2
 
-        # Compute shading
+        # Lighting
         normal = compute_normal(v0, v1, v2)
         intensity = np.dot(normal, light_dir)
         if intensity <= 0:
-            continue  # Skip back-facing triangles
+            continue
 
         # Convert 3D to 2D screen coordinates
         pts = np.array([
@@ -43,45 +45,36 @@ def render_model(model: Model, texture: np.ndarray, angles: Tuple[float, float, 
             [(v2[0] + 1) * width / 2, (1 - v2[1]) * height / 2]
         ], dtype=np.int32)
 
+        # Triangle Z (depth)
         z_avg = (v0[2] + v1[2] + v2[2]) / 3
 
+        # Flat texture color: sample at centroid of texture triangle
+        vt_centroid = (vt0 + vt1 + vt2) / 3
+        tx = int(vt_centroid[0] * tex_w)
+        ty = int((1 - vt_centroid[1]) * tex_h)
+        tx = np.clip(tx, 0, tex_w - 1)
+        ty = np.clip(ty, 0, tex_h - 1)
+        tex_color = texture[ty, tx].astype(np.float32)
+
+        # Apply lighting to texture color
+        shaded_color = np.clip(tex_color * intensity, 0, 255).astype(np.uint8)
+
+        # Rasterization mask
         triangle_mask = np.zeros((height, width), dtype=np.uint8)
         cv2.fillConvexPoly(triangle_mask, pts, 255)
 
+        # Bounding box
         min_x, min_y = np.min(pts, axis=0)
         max_x, max_y = np.max(pts, axis=0)
         min_x, min_y = max(0, min_x), max(0, min_y)
         max_x, max_y = min(width - 1, max_x), min(height - 1, max_y)
 
-        # Update Z-buffer and image
+        # Fill pixels inside triangle
         for y in range(int(min_y), int(max_y)):
             for x in range(int(min_x), int(max_x)):
-                if triangle_mask[y, x] == 255:
-                    # Compute barycentric coordinates
-                    u, v, w = barycentric(pts[0], pts[1], pts[2], (x, y))
-                    if u < 0 or v < 0 or w < 0:
-                        continue  # Outside triangle or degenerate
-
-                    if u >= 0 and v >= 0 and w >= 0:
-                        z_pixel = u * v0[2] + v * v1[2] + w * v2[2]
-                        if z_pixel > z_buffer[y, x]:
-                            # Interpolate texture coordinates
-                            tex_coord = u * vt0 + v * vt1 + w * vt2
-                            tx, ty = int(tex_coord[0] * tex_w), int((1 - tex_coord[1]) * tex_h)
-
-                            # Ensure within texture bounds
-                            tx = np.clip(tx, 0, tex_w - 1)
-                            ty = np.clip(ty, 0, tex_h - 1)
-
-                            # Sample texture color
-                            texture_color = texture[ty, tx]
-
-                            # Apply shading
-                            shaded_color = (texture_color * intensity).astype(np.uint8)
-
-                            # Update pixel
-                            z_buffer[y, x] = z_pixel
-                            image[y, x] = shaded_color
+                if triangle_mask[y, x] == 255 and z_avg > z_buffer[y, x]:
+                    z_buffer[y, x] = z_avg
+                    image[y, x] = shaded_color
 
     return image
 

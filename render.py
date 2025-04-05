@@ -2,15 +2,18 @@ import argparse
 from typing import Tuple
 import numpy as np
 import cv2
+import imageio.v3 as iio
 from model import Model
-from utils import compute_normal, rotate_x, rotate_y, rotate_z
+from utils import compute_normal, rotate_x, rotate_y, rotate_z, barycentric
 
 
-def render_model(model: Model, angles: Tuple[float, float, float], width: int=800, height: int=800) -> np.ndarray:
+def render_model(model: Model, texture: np.ndarray, angles: Tuple[float, float, float], width: int = 800, height: int = 800) -> np.ndarray:
     theta_x, theta_y, theta_z = angles
     image = np.zeros((height, width, 3), dtype=np.uint8)
     z_buffer = np.full((height, width), -np.inf)
     light_dir = np.array([0, 0, 1])
+
+    tex_h, tex_w = texture.shape[:2]
 
     # Apply rotation around all axes
     rotation_matrix = rotate_z(theta_z) @ rotate_y(theta_y) @ rotate_x(theta_x)
@@ -18,17 +21,20 @@ def render_model(model: Model, angles: Tuple[float, float, float], width: int=80
     for i in range(model.nfaces()):
         face = model.face(i)
         v0, v1, v2 = model.vert(face[0]), model.vert(face[1]), model.vert(face[2])
+        # Get texture coordinates
+        tex_face = model.tex_face(i)
+        vt0 = model.texcoord(tex_face[0])
+        vt1 = model.texcoord(tex_face[1])
+        vt2 = model.texcoord(tex_face[2])
 
         # Apply rotation
         v0, v1, v2 = rotation_matrix @ v0, rotation_matrix @ v1, rotation_matrix @ v2
 
+        # Compute shading
         normal = compute_normal(v0, v1, v2)
         intensity = np.dot(normal, light_dir)
-
         if intensity <= 0:
             continue  # Skip back-facing triangles
-
-        color = (intensity * 255, intensity * 255, intensity * 255)
 
         # Convert 3D to 2D screen coordinates
         pts = np.array([
@@ -51,9 +57,32 @@ def render_model(model: Model, angles: Tuple[float, float, float], width: int=80
         for y in range(int(min_y), int(max_y)):
             for x in range(int(min_x), int(max_x)):
                 if triangle_mask[y, x] == 255:
-                    if z_avg > z_buffer[y, x]:
-                        z_buffer[y, x] = z_avg
-                        image[y, x] = color
+                    # Compute barycentric coordinates
+                    u, v, w = barycentric(pts[0], pts[1], pts[2], (x, y))
+                    if u < 0 or v < 0 or w < 0:
+                        continue  # Outside triangle or degenerate
+
+                    if u >= 0 and v >= 0 and w >= 0:
+                        z_pixel = u * v0[2] + v * v1[2] + w * v2[2]
+                        if z_pixel > z_buffer[y, x]:
+                            # Interpolate texture coordinates
+                            tex_coord = u * vt0 + v * vt1 + w * vt2
+                            tx, ty = int(tex_coord[0] * tex_w), int((1 - tex_coord[1]) * tex_h)
+
+                            # Ensure within texture bounds
+                            tx = np.clip(tx, 0, tex_w - 1)
+                            ty = np.clip(ty, 0, tex_h - 1)
+
+                            # Sample texture color
+                            texture_color = texture[ty, tx]
+
+                            # Apply shading
+                            shaded_color = (texture_color * intensity).astype(np.uint8)
+
+                            # Update pixel
+                            z_buffer[y, x] = z_pixel
+                            image[y, x] = shaded_color
+
     return image
 
 
@@ -65,10 +94,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     model = Model("data/african_head.obj")
+    texture = iio.imread("data/african_head_diffuse.tga")
+
+    texture = cv2.cvtColor(texture, cv2.COLOR_BGR2RGB)
+    tex_h, tex_w = texture.shape[:2]
     theta_x = theta_y = theta_z = 0  # Initial rotation angles
 
     while True:
-        image = render_model(model, (theta_x, theta_y, theta_z))
+        image = render_model(model, texture, (theta_x, theta_y, theta_z))
         cv2.imshow("Rotating Head", image)
 
         theta_x += np.radians(args.roll)

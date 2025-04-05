@@ -17,7 +17,6 @@ def rotate_y(theta: float) -> np.ndarray:
 
 
 def rotate_z(theta: float) -> np.ndarray:
-    """Rotation matrix for Y-axis."""
     cos_t, sin_t = np.cos(theta), np.sin(theta)
     return np.array([
         [cos_t, 0, sin_t],
@@ -33,3 +32,14 @@ def rotate_x(theta: float) -> np.ndarray:
         [sin_t, cos_t, 0],
         [0, 0, 1]
     ])
+
+
+def barycentric(a, b, c, p):
+    s = np.array([
+        [c[0] - a[0], b[0] - a[0], a[0] - p[0]],
+        [c[1] - a[1], b[1] - a[1], a[1] - p[1]]
+    ])
+    u = np.cross(s[0], s[1])
+    if abs(u[2]) < 1e-2:  # Triangle is degenerate
+        return -1, -1, -1
+    return 1.0 - (u[0] + u[1]) / u[2], u[1] / u[2], u[0] / u[2]

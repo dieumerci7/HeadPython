@@ -90,7 +90,6 @@ if __name__ == "__main__":
     texture = iio.imread("data/african_head_diffuse.tga")
 
     texture = cv2.cvtColor(texture, cv2.COLOR_BGR2RGB)
-    tex_h, tex_w = texture.shape[:2]
     theta_x = theta_y = theta_z = 0  # Initial rotation angles
 
     while True:
